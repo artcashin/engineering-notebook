@@ -23,4 +23,16 @@ describe("renderSessionFooter", () => {
     expect(html).toContain("codex resume 019bf429-646d-70c2-a8b8-a0d69db3f01d");
     expect(html).not.toContain("claude --resume");
   });
+
+  test("renders Perplexity URL for Perplexity session source paths", () => {
+    const html = renderSessionFooter(
+      "b8d2bfd0-fc20-41b7-823e-b93fb06af69a",
+      "/perplexity/how do i change the resolution on a mac",
+      "/Users/artinnj/.perplexity/sessions/b8d2bfd0-fc20-41b7-823e-b93fb06af69a.jsonl"
+    );
+
+    expect(html).toContain("perplexity.ai/computer/tasks/b8d2bfd0-fc20-41b7-823e-b93fb06af69a");
+    expect(html).not.toContain("claude --resume");
+    expect(html).not.toContain("codex resume");
+  });
 });

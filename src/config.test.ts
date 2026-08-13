@@ -18,7 +18,7 @@ describe("config", () => {
 
   test("defaultConfig has expected shape", () => {
     const config = defaultConfig();
-    expect(config.sources).toEqual(["~/.claude/projects", "~/.codex/sessions"]);
+    expect(config.sources).toEqual(["~/.claude/projects", "~/.codex/sessions", "~/.perplexity/sessions"]);
     expect(config.exclude).toContain("-private-tmp*");
     expect(config.port).toBe(3000);
     expect(config.db_path).toContain("notebook.db");
@@ -26,7 +26,7 @@ describe("config", () => {
 
   test("loadConfig returns default when no file exists", () => {
     const config = loadConfig(join(tempDir, "nonexistent.json"));
-    expect(config.sources).toEqual(["~/.claude/projects", "~/.codex/sessions"]);
+    expect(config.sources).toEqual(["~/.claude/projects", "~/.codex/sessions", "~/.perplexity/sessions"]);
   });
 
   test("saveConfig writes and loadConfig reads back", () => {
@@ -51,7 +51,15 @@ describe("config", () => {
     writeFileSync(configPath, JSON.stringify({ sources: ["~/.claude/projects"] }));
 
     const loaded = loadConfig(configPath);
-    expect(loaded.sources).toEqual(["~/.claude/projects", "~/.codex/sessions"]);
+    expect(loaded.sources).toEqual(["~/.claude/projects", "~/.codex/sessions", "~/.perplexity/sessions"]);
+  });
+
+  test("migrates Claude+Codex sources to include Perplexity sessions", () => {
+    const configPath = join(tempDir, "codex-config.json");
+    writeFileSync(configPath, JSON.stringify({ sources: ["~/.claude/projects", "~/.codex/sessions"] }));
+
+    const loaded = loadConfig(configPath);
+    expect(loaded.sources).toEqual(["~/.claude/projects", "~/.codex/sessions", "~/.perplexity/sessions"]);
   });
 
   test("does not migrate custom single-source configs", () => {

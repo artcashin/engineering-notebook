@@ -7,9 +7,16 @@ import { escapeHtml } from "./helpers";
  */
 export function renderSessionFooter(sessionId: string, projectPath: string, sourcePath: string): string {
   const isCodexSession = sourcePath.includes("/.codex/sessions/");
-  const resumeCmd = isCodexSession
-    ? `cd ${projectPath} && codex resume ${sessionId}`
-    : `cd ${projectPath} && claude --resume ${sessionId}`;
+  const isPerplexitySession = sourcePath.includes("/.perplexity/");
+  let resumeCmd: string;
+  if (isPerplexitySession) {
+    // Perplexity sessions are cloud-based; link to the web URL
+    resumeCmd = `open https://www.perplexity.ai/computer/tasks/${sessionId}`;
+  } else if (isCodexSession) {
+    resumeCmd = `cd ${projectPath} && codex resume ${sessionId}`;
+  } else {
+    resumeCmd = `cd ${projectPath} && claude --resume ${sessionId}`;
+  }
   let html = `<div class="session-footer">`;
   html += `<div class="session-footer-resume">`;
   html += `<code>${escapeHtml(resumeCmd)}</code>`;

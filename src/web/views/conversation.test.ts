@@ -90,4 +90,25 @@ describe("renderConversation", () => {
     expect(html).toContain("Codex");
     expect(html).not.toContain("msg-label\">Claude");
   });
+
+  test("recognizes Perplexity as assistant speaker", () => {
+    const md = [
+      "**artinnj (2026-08-12 14:28):** How do I change resolution?",
+      "**Perplexity (2026-08-12 14:28):** Go to System Settings.",
+    ].join("\n");
+    const html = renderConversation(md, "artinnj", "Perplexity");
+    expect(html).toContain("artinnj");
+    expect(html).toContain("Perplexity");
+    expect(html).toContain("msg-body-claude"); // Perplexity uses same body class as assistant
+    expect(html).toContain("msg-speaker-change");
+  });
+
+  test("recognizes Perplexity Computer as assistant speaker", () => {
+    const md = [
+      "**Perplexity Computer (2026-08-10 18:00):** I'll help you deploy.",
+    ].join("\n");
+    const html = renderConversation(md, "artinnj", "Perplexity Computer");
+    expect(html).toContain("Perplexity Computer");
+    expect(html).toContain("msg-body-claude");
+  });
 });

@@ -61,6 +61,27 @@ type CodexRecord = {
   };
 };
 
+type PerplexityMetaRecord = {
+  type: string; // "perplexity_meta"
+  session_id?: string;
+  title?: string;
+  status?: string;
+  created_at?: string;
+  updated_at?: string;
+  author_username?: string;
+  project_id?: string | null;
+  url?: string;
+  source?: string; // "search" | "computer"
+};
+
+type PerplexityTurnRecord = {
+  type: string; // "perplexity_turn"
+  turn?: number;
+  query?: string;
+  answer?: string;
+  timestamp?: string;
+};
+
 type ContentBlock = {
   type: string;
   text?: string;
@@ -174,14 +195,55 @@ export function parseSession(filePath: string): ParsedSession {
   let codexFormat = false;
   let assistantDisplayName = "Claude";
 
+  let perplexityFormat = false;
+  let perplexityAuthor = "";
+
   for (const line of lines) {
-    let parsed: RawRecord | CodexRecord;
+    let parsed: RawRecord | CodexRecord | PerplexityMetaRecord | PerplexityTurnRecord;
     try {
       parsed = JSON.parse(line);
     } catch {
       continue; // skip malformed lines
     }
 
+    // ── Perplexity format ──
+    const perplexityRecord = parsed as PerplexityMetaRecord | PerplexityTurnRecord;
+    if (perplexityRecord.type === "perplexity_meta" || perplexityFormat) {
+      perplexityFormat = true;
+
+      if (perplexityRecord.type === "perplexity_meta") {
+        const meta = perplexityRecord as PerplexityMetaRecord;
+        if (meta.session_id) sessionId = meta.session_id;
+        if (meta.title) projectPath = `/perplexity/${meta.title}`;
+        if (meta.created_at && !firstTimestamp) firstTimestamp = meta.created_at;
+        if (meta.updated_at) lastTimestamp = meta.updated_at;
+        if (meta.author_username) {
+          perplexityAuthor = meta.author_username;
+        }
+        if (meta.source === "computer") {
+          assistantDisplayName = "Perplexity Computer";
+        } else {
+          assistantDisplayName = "Perplexity";
+        }
+        continue;
+      }
+
+      if (perplexityRecord.type !== "perplexity_turn") continue;
+
+      const turn = perplexityRecord as PerplexityTurnRecord;
+      const turnTimestamp = turn.timestamp || lastTimestamp || firstTimestamp || "";
+
+      // Each turn produces a user message (query) and an assistant message (answer)
+      if (turn.query) {
+        messages.push({ role: "user", text: turn.query, timestamp: turnTimestamp });
+      }
+      if (turn.answer) {
+        messages.push({ role: "assistant", text: turn.answer, timestamp: turnTimestamp });
+      }
+      continue;
+    }
+
+    // ── Codex format ──
     const codexRecord = parsed as CodexRecord;
     if (codexRecord.type === "session_meta" || codexFormat) {
       codexFormat = true;
@@ -277,9 +339,12 @@ export function parseSession(filePath: string): ParsedSession {
   }
 
   const projectName = projectNameFromPath(projectPath);
-  const userDisplayName = userDisplayNameFromPath(projectPath);
+  let userDisplayName = userDisplayNameFromPath(projectPath);
   if (codexFormat && assistantDisplayName === "Claude") {
     assistantDisplayName = "Codex";
+  }
+  if (perplexityFormat && perplexityAuthor) {
+    userDisplayName = perplexityAuthor;
   }
 
   return {

@@ -6,6 +6,8 @@ const fixturePath = join(import.meta.dir, "../tests/fixtures/test-session-1.json
 const codexFixturePath = join(import.meta.dir, "../tests/fixtures/test-codex-session-1.jsonl");
 const subagentFixturePath = join(import.meta.dir, "../tests/fixtures/parent-session-id/subagents/agent-aba4e4e.jsonl");
 const commandFixturePath = join(import.meta.dir, "../tests/fixtures/test-command-messages.jsonl");
+const perplexityFixturePath = join(import.meta.dir, "../tests/fixtures/test-perplexity-session-1.jsonl");
+const perplexityComputerFixturePath = join(import.meta.dir, "../tests/fixtures/test-perplexity-session-computer.jsonl");
 
 describe("parseSession", () => {
   test("extracts session metadata", () => {
@@ -125,5 +127,57 @@ describe("parseSession", () => {
     expect(userMessages.length).toBe(2);
     expect(userMessages[0]!.text).toBe("/brainstorm fix the login bug");
     expect(userMessages[1]!.text).toBe("/commit");
+  });
+
+  // ── Perplexity session tests ──
+
+  test("parses Perplexity search session metadata", () => {
+    const session = parseSession(perplexityFixturePath);
+    expect(session.sessionId).toBe("test-perplexity-1");
+    expect(session.assistantDisplayName).toBe("Perplexity");
+    expect(session.userDisplayName).toBe("artinnj");
+    expect(session.startedAt).toBe("2026-08-12T14:28:20.469786");
+    expect(session.endedAt).toBe("2026-08-12T14:28:26.490776");
+    expect(session.gitBranch).toBeNull();
+    expect(session.parentSessionId).toBeNull();
+  });
+
+  test("extracts user/assistant messages from Perplexity turns", () => {
+    const session = parseSession(perplexityFixturePath);
+    // 2 turns x 2 messages (user + assistant) = 4 messages
+    expect(session.messages.length).toBe(4);
+    expect(session.messages[0]!.role).toBe("user");
+    expect(session.messages[0]!.text).toContain("how do i change the resolution");
+    expect(session.messages[1]!.role).toBe("assistant");
+    expect(session.messages[1]!.text).toContain("Apple menu");
+    expect(session.messages[2]!.role).toBe("user");
+    expect(session.messages[2]!.text).toContain("older macos");
+    expect(session.messages[3]!.role).toBe("assistant");
+    expect(session.messages[3]!.text).toContain("System Preferences");
+  });
+
+  test("uses Perplexity label in markdown for search sessions", () => {
+    const session = parseSession(perplexityFixturePath);
+    const md = session.toMarkdown();
+    expect(md).toContain("# Session:");
+    expect(md).toContain("**artinnj");
+    expect(md).toContain("**Perplexity");
+    expect(md).not.toContain("**Claude");
+    expect(md).not.toContain("**Codex");
+  });
+
+  test("parses Perplexity Computer session with correct assistant name", () => {
+    const session = parseSession(perplexityComputerFixturePath);
+    expect(session.assistantDisplayName).toBe("Perplexity Computer");
+    expect(session.sessionId).toBe("test-perplexity-computer-1");
+    // 3 turns x 2 = 6 messages
+    expect(session.messages.length).toBe(6);
+    expect(session.startedAt).toBe("2026-08-10T18:00:00.000000");
+    expect(session.endedAt).toBe("2026-08-10T19:30:00.000000");
+  });
+
+  test("Perplexity session messageCount matches messages array", () => {
+    const session = parseSession(perplexityFixturePath);
+    expect(session.messageCount).toBe(session.messages.length);
   });
 });

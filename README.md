@@ -1,6 +1,6 @@
 # Engineering Notebook
 
-A CLI tool that ingests [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and [Codex](https://openai.com/index/introducing-codex/) session transcripts, generates LLM-powered daily summaries, and serves a web UI for browsing your engineering journal.
+A CLI tool that ingests [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex](https://openai.com/index/introducing-codex/), and [Perplexity](https://www.perplexity.ai/) session transcripts, generates LLM-powered daily summaries, and serves a web UI for browsing your engineering journal.
 
 Think of it as an automatic engineering diary — it watches your AI coding sessions and distills them into a searchable, browsable narrative of what you built, what problems you hit, and what decisions you made.
 
@@ -8,7 +8,7 @@ Think of it as an automatic engineering diary — it watches your AI coding sess
 
 ## How It Works
 
-1. **Ingest** — Scans directories of Claude Code and Codex JSONL session files, parses out the human-readable conversation (stripping tool calls, thinking blocks, etc.), and stores them in SQLite.
+1. **Ingest** — Scans directories of Claude Code, Codex, and Perplexity JSONL session files, parses out the human-readable conversation (stripping tool calls, thinking blocks, etc.), and stores them in SQLite.
 2. **Summarize** — Groups sessions by date and project, then uses Claude to write concise engineering journal entries with headlines, summaries, topics, and open questions.
 3. **Serve** — Runs a web server with a browsable UI: daily journal, project timelines, calendar/Gantt view, session transcripts, full-text search, and an iCal feed.
 
@@ -26,7 +26,7 @@ bun link  # makes `engineering-notebook` available globally
 ## Quick Start
 
 ```sh
-# 1. Ingest your sessions (defaults to ~/.claude/projects and ~/.codex/sessions)
+# 1. Ingest your sessions (defaults to ~/.claude/projects, ~/.codex/sessions, and ~/.perplexity/sessions)
 engineering-notebook ingest
 
 # 2. Generate journal summaries (requires ANTHROPIC_API_KEY)
@@ -51,7 +51,26 @@ The web interface has several views:
 |:---:|:---:|
 | Calendar/Gantt view | Full-text search |
 
-Each session transcript includes a resume command (`claude --resume <id>`) with a copy button for picking up where you left off.
+Each session transcript includes a resume command (`claude --resume <id>`) with a copy button for picking up where you left off. Perplexity sessions show a link to the original web session instead.
+
+### Perplexity Sessions
+
+Perplexity sessions are cloud-based and don't write JSONL files locally. To ingest them:
+
+1. Run the exporter script from within a Perplexity Computer session:
+   ```sh
+   python3 scripts/perplexity-session-exporter.py --limit 100 --output-dir ./perplexity-sessions
+   ```
+   This downloads all your Perplexity session transcripts and converts them to engineering-notebook's JSONL format.
+
+2. Optionally push to a GitHub repo for syncing:
+   ```sh
+   python3 scripts/perplexity-session-exporter.py --repo https://github.com/youruser/perplexity-sessions.git
+   ```
+
+3. Sync the exported files to `~/.perplexity/sessions` on your local machine (e.g., `git clone` or `git pull`).
+
+4. Run `engineering-notebook ingest` as usual.
 
 ## Usage
 
@@ -93,7 +112,7 @@ Config lives at `~/.config/engineering-notebook/config.json`:
 
 ```json
 {
-  "sources": ["~/.claude/projects", "~/.codex/sessions"],
+  "sources": ["~/.claude/projects", "~/.codex/sessions", "~/.perplexity/sessions"],
   "exclude": ["-private-tmp*", "*-skill-test-*"],
   "db_path": "~/.config/engineering-notebook/notebook.db",
   "port": 3000,
@@ -106,7 +125,7 @@ Config lives at `~/.config/engineering-notebook/config.json`:
 
 | Field                  | Description                                                                              | Default                                        |
 | ---------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| `sources`              | Directories to scan for session files                                                    | `["~/.claude/projects", "~/.codex/sessions"]`  |
+| `sources`              | Directories to scan for session files                                                    | `["~/.claude/projects", "~/.codex/sessions", "~/.perplexity/sessions"]`  |
 | `exclude`              | Glob patterns for directories to skip                                                    | `["-private-tmp*", "*-skill-test-*"]`          |
 | `db_path`              | SQLite database location                                                                 | `~/.config/engineering-notebook/notebook.db`   |
 | `port`                 | Web server port                                                                          | `3000`                                         |

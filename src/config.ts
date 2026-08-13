@@ -23,7 +23,7 @@ export type Config = {
 export function defaultConfig(): Config {
   const configDir = join(homedir(), ".config", "engineering-notebook");
   return {
-    sources: ["~/.claude/projects", "~/.codex/sessions"],
+    sources: ["~/.claude/projects", "~/.codex/sessions", "~/.perplexity/sessions"],
     exclude: ["-private-tmp*", "*-skill-test-*"],
     db_path: join(configDir, "notebook.db"),
     port: 3000,
@@ -47,13 +47,24 @@ export function loadConfig(path?: string): Config {
   const parsed = JSON.parse(raw) as Partial<Config>;
   const config = { ...defaultConfig(), ...parsed };
 
-  // Migrate older default source list to include Codex sessions.
+  // Migrate older default source list to include Codex and Perplexity sessions.
   if (
     Array.isArray(parsed.sources) &&
     parsed.sources.length === 1 &&
     parsed.sources[0] === "~/.claude/projects"
   ) {
     config.sources = defaultConfig().sources;
+  }
+
+  // Migrate configs that have Claude + Codex but not Perplexity.
+  if (
+    Array.isArray(parsed.sources) &&
+    parsed.sources.length === 2 &&
+    parsed.sources.includes("~/.claude/projects") &&
+    parsed.sources.includes("~/.codex/sessions") &&
+    !parsed.sources.includes("~/.perplexity/sessions")
+  ) {
+    config.sources = [...parsed.sources, "~/.perplexity/sessions"];
   }
 
   return config;

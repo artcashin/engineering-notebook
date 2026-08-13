@@ -18,12 +18,13 @@ export function inferUserDisplayName(projectPath: string | null | undefined): st
 export function inferAssistantDisplayName(sourcePath: string | null | undefined): string {
   if (!sourcePath) return "Claude";
   const normalized = sourcePath.replace(/\\/g, "/").toLowerCase();
+  if (normalized.includes("/.perplexity/")) return "Perplexity";
   return normalized.includes("/.codex/") ? "Codex" : "Claude";
 }
 
 function isAssistantSpeaker(speaker: string): boolean {
   const normalized = speaker.trim().toLowerCase();
-  return normalized === "claude" || normalized === "assistant" || normalized === "codex";
+  return normalized === "claude" || normalized === "assistant" || normalized === "codex" || normalized.startsWith("perplexity");
 }
 
 type ParsedMessage = {
