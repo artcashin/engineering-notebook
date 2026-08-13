@@ -4,25 +4,23 @@
 #
 # Runs inside a Perplexity Computer session. Lists all user sessions,
 # downloads each transcript, converts to engineering-notebook JSONL format,
-# and optionally pushes to a GitHub repo for local sync.
+# and pushes to a GitHub repo for local sync.
+#
+# MUST be run via the bash tool with api_credentials=["pplx-sdk"]
 #
 # Usage:
-#   ./perplexity-session-exporter.sh [--limit N] [--repo URL] [--output-dir PATH] [--force]
+#   bash perplexity-session-exporter.sh [--limit N] [--repo URL] [--output-dir PATH] [--force]
 #
-# Defaults:
-#   --limit       100   (max sessions to fetch)
-#   --repo        (none — just writes files locally if not specified)
-#   --output-dir  ./perplexity-sessions
-#   --force       re-export sessions that already exist
-#
-# Requires: pplx CLI (available inside Computer runtime), git, python3
+# IMPORTANT: pplx CLI commands use file redirects (>) not command substitution ($())
+#   because the bash tool's pplx-sdk credential injection doesn't propagate to
+#   command substitution subshells.
 #
 
 set -uo pipefail
 
 LIMIT=100
-REPO=""
-OUTPUT_DIR="./perplexity-sessions"
+REPO="https://github.com/artcashin/perplexity-sessions.git"
+OUTPUT_DIR="/home/user/workspace/perplexity-sessions"
 FORCE=false
 
 while [[ $# -gt 0 ]]; do
@@ -31,7 +29,7 @@ while [[ $# -gt 0 ]]; do
     --repo)        REPO="$2"; shift 2 ;;
     --output-dir)  OUTPUT_DIR="$2"; shift 2 ;;
     --force)       FORCE=true; shift ;;
-    *) echo "Unknown arg: $1"; exit 1 ;;
+    *) shift ;;
   esac
 done
 
@@ -44,19 +42,19 @@ echo "Output dir: $OUTPUT_DIR"
 echo "Limit: $LIMIT"
 echo ""
 
-# ── Step 1: List all sessions ──
+# Step 1: List all sessions (file redirect, NOT command substitution)
 echo "Listing sessions..."
 pplx session list --limit "$LIMIT" > "$WORK_TMP/sessions.json" 2>/dev/null
 
-SESSION_COUNT=$(python3 -c "import json; data=json.load(open('$WORK_TMP/sessions.json')); print(len(data))")
+SESSION_COUNT=$(python3 -c "import json; data=json.load(open('$WORK_TMP/sessions.json')); print(len(data))" 2>/dev/null || echo "0")
 echo "Found $SESSION_COUNT session(s)"
 
-if [[ "$SESSION_COUNT" -eq 0 ]]; then
+if [[ "$SESSION_COUNT" == "0" ]]; then
   echo "No sessions found. Exiting."
   exit 0
 fi
 
-# Extract session UUIDs and types into a file
+# Extract session UUIDs and types to a file
 python3 -c "
 import json
 with open('$WORK_TMP/sessions.json') as f:
@@ -65,7 +63,7 @@ for s in data:
     print(f\"{s['context_uuid']}|{s.get('type', 'search')}\")
 " > "$WORK_TMP/session_list.txt"
 
-# ── Step 2: Download and convert each session ──
+# Step 2: Download and convert each session
 PROCESSED=0
 SKIPPED=0
 ERRORS=0
@@ -83,7 +81,7 @@ while IFS='|' read -r SESSION_UUID SESSION_TYPE; do
   DL_DIR="$WORK_TMP/dl-$SESSION_UUID"
   mkdir -p "$DL_DIR"
 
-  # Download content — metadata JSON is printed to stdout, conversation.jsonl written to disk
+  # Download content - metadata JSON to stdout (file redirect), conversation.jsonl to disk
   pplx session get "$SESSION_UUID" --download-content --download-path "$DL_DIR" > "$DL_DIR/meta.json" 2>/dev/null
   DL_EXIT=$?
 
@@ -107,10 +105,7 @@ import json
 import sys
 import os
 
-meta_file = sys.argv[1]
-convo_file = sys.argv[2]
-output_file = sys.argv[3]
-session_type = sys.argv[4]
+meta_file, convo_file, output_file, session_type = sys.argv[1:5]
 
 try:
     with open(meta_file) as f:
@@ -118,33 +113,23 @@ try:
 except Exception:
     meta = {}
 
-session_id = meta.get("session_id", os.path.basename(output_file).replace(".jsonl", ""))
-title = meta.get("title", "untitled")
-status = meta.get("status", "completed")
-created_at = meta.get("created_at", "")
-updated_at = meta.get("updated_at", "")
-author = meta.get("author_username", "")
-project_id = meta.get("project_id")
-url = meta.get("url", "")
-
 meta_record = {
     "type": "perplexity_meta",
-    "session_id": session_id,
-    "title": title,
-    "status": status,
-    "created_at": created_at,
-    "updated_at": updated_at,
-    "author_username": author,
-    "project_id": project_id,
-    "url": url,
+    "session_id": meta.get("session_id", os.path.basename(output_file).replace(".jsonl", "")),
+    "title": meta.get("title", "untitled"),
+    "status": meta.get("status", "completed"),
+    "created_at": meta.get("created_at", ""),
+    "updated_at": meta.get("updated_at", ""),
+    "author_username": meta.get("author_username", ""),
+    "project_id": meta.get("project_id"),
+    "url": meta.get("url", ""),
     "source": session_type,
 }
 
 turn_count = 0
 with open(output_file, "w") as f:
     f.write(json.dumps(meta_record) + "\n")
-
-    with open(convo_file, "r") as cf:
+    with open(convo_file) as cf:
         for line in cf:
             line = line.strip()
             if not line:
@@ -153,15 +138,13 @@ with open(output_file, "w") as f:
                 turn = json.loads(line)
             except Exception:
                 continue
-
-            turn_record = {
+            f.write(json.dumps({
                 "type": "perplexity_turn",
                 "turn": turn.get("turn", 0),
                 "query": turn.get("query", ""),
                 "answer": turn.get("answer", ""),
-                "timestamp": created_at,
-            }
-            f.write(json.dumps(turn_record) + "\n")
+                "timestamp": meta.get("created_at", ""),
+            }) + "\n")
             turn_count += 1
 
 print(f"OK ({turn_count} turns)")
@@ -177,8 +160,8 @@ echo "Processed: $PROCESSED"
 echo "Skipped (already exist): $SKIPPED"
 echo "Errors: $ERRORS"
 
-# ── Step 3: Push to GitHub repo if specified ──
-if [[ -n "$REPO" ]]; then
+# Step 3: Push to GitHub repo
+if [[ -n "$REPO" && "$PROCESSED" -gt 0 ]]; then
   echo ""
   echo "Pushing to GitHub: $REPO"
 
@@ -186,12 +169,14 @@ if [[ -n "$REPO" ]]; then
 
   if [[ ! -d ".git" ]]; then
     git init
+    git config user.email "artinnj@gmail.com"
+    git config user.name "artcashin"
     git remote add origin "$REPO"
   fi
 
   git add -A
-  git commit -m "Export $(date -u +%Y-%m-%dT%H:%M:%SZ) — $PROCESSED new, $SKIPPED skipped" || echo "Nothing to commit"
-  git push -u origin main 2>/dev/null || git push -u origin master 2>/dev/null || echo "Push failed — check repo URL and credentials"
+  git commit -m "Export $(date -u +%Y-%m-%dT%H:%M:%SZ) - $PROCESSED new, $SKIPPED skipped" || echo "Nothing to commit"
+  git push -u origin main 2>/dev/null || git push -u origin master 2>/dev/null || echo "Push failed"
 
-  echo "Done. Clone or pull this repo locally and point engineering-notebook at the directory."
+  echo "Done."
 fi
