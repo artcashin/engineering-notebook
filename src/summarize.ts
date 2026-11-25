@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { complete, providerModel, DEFAULT_CLAUDE_MODEL, type SummaryProvider } from "./llm";
+import { completeWithModel, providerModel, DEFAULT_CLAUDE_MODEL, type SummaryProvider } from "./llm";
 
 const SUMMARIZE_MODEL = DEFAULT_CLAUDE_MODEL;
 
@@ -397,11 +397,11 @@ export async function summarizeGroup(
 ): Promise<{ skipped: boolean; skipReason?: string }> {
   const prompt = buildSummaryPrompt(group, summaryInstructions);
 
-  const responseText = await complete(prompt, provider);
+  const { text: responseText, model } = await completeWithModel(prompt, provider);
 
   const parsed = parseSummaryResponse(responseText);
 
-  upsertJournalEntry(db, group, parsed, providerModel(provider));
+  upsertJournalEntry(db, group, parsed, model);
 
   // Give each summarized session a Desktop-style title if it doesn't already
   // have one (Desktop/user titles and existing generated ones are left alone).

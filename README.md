@@ -200,6 +200,37 @@ never stored in the config file. Reasoning models spend completion tokens
 thinking before emitting any content, so keep `max_tokens` generous (it defaults
 to 4000); too small a budget returns an empty response rather than a summary.
 
+A local box is not always switched on. Give the provider a `fallback` and it is
+used whenever the primary endpoint cannot be reached on the network — connection
+refused, DNS failure, or no answer within `probe_timeout_ms` (default 3000):
+
+```json
+{
+  "summary_provider": {
+    "type": "openai",
+    "base_url": "http://spark:8001/v1",
+    "model": "qwen3-coder",
+    "api_key_env": "SPARK_API_KEY",
+    "fallback": {
+      "type": "openai",
+      "base_url": "https://api.deepinfra.com/v1/openai",
+      "model": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+      "api_key_env": "DEEPINFRA_API_KEY"
+    }
+  }
+}
+```
+
+Only an unreachable endpoint triggers the fallback; one that answers with an
+HTTP error is reported as an error, so a bad key or model name is not silently
+papered over. Each journal entry and report records the model that actually
+wrote it. The fallback applies to summaries, session titles and weekly reports,
+from both the CLI and the web UI. Use whichever Qwen model ID DeepInfra
+currently lists.
+
+Run `engineering-notebook summarize` with no flags to list the date+project
+groups that have never been summarized, then `summarize --all` to write them.
+
 ### Remote Sources
 
 Sync session files from remote machines over SSH:

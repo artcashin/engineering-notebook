@@ -11,7 +11,7 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
-import { complete, providerModel, type SummaryProvider } from "./llm";
+import { complete, providerModel, resolveProvider, type SummaryProvider } from "./llm";
 import type { WeekRange } from "./week";
 import type { ResolvedTemplate } from "./report-template";
 import { renderTemplate } from "./report-template";
@@ -167,14 +167,17 @@ export async function generateReport(
 ): Promise<{ markdown: string; version: number }> {
   const { prompt, entries } = buildPrompt(db, opts.range, opts.template);
   const run = opts.completeImpl ?? complete;
-  const markdown = await run(prompt, opts.provider);
+  // Settle on the serving provider first so the stored model is the one that
+  // actually wrote the report, not a configured endpoint that was unreachable.
+  const provider = await resolveProvider(opts.provider);
+  const markdown = await run(prompt, provider);
 
   const version = storeReport(db, {
     range: opts.range,
     markdown,
     entryIds: entries.map((e) => e.id),
     templateSource: opts.template.source,
-    model: providerModel(opts.provider),
+    model: providerModel(provider),
   });
 
   return { markdown, version };

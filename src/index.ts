@@ -91,14 +91,24 @@ switch (command) {
       const { groupSessionsByDateAndProject } = await import("./summarize");
       const groups = groupSessionsByDateAndProject(db, undefined, undefined, config.day_start_hour);
       console.log(`Found ${groups.length} unsummarized date+project group(s).`);
+      const sorted = [...groups].sort(
+        (a, b) => a.date.localeCompare(b.date) || a.projectName.localeCompare(b.projectName)
+      );
+      for (const g of sorted) {
+        console.log(`  ${g.date}  ${g.projectName}  (${g.sessionIds.length} session(s))`);
+      }
       console.log("Use --all to summarize everything, or --date/--project to filter.");
       closeDb();
       break;
     }
 
     const { summarizeAll } = await import("./summarize");
-    const { providerModel } = await import("./llm");
-    console.log(`Summarizing with ${providerModel(config.summary_provider)}...`);
+    const { providerModel, resolveProvider } = await import("./llm");
+    const serving = await resolveProvider(config.summary_provider);
+    if (serving !== config.summary_provider) {
+      console.log(`${providerModel(config.summary_provider)} is unreachable — falling back.`);
+    }
+    console.log(`Summarizing with ${providerModel(serving)}...`);
     const result = await summarizeAll(db, filterDate, filterProject, (done, total, group) => {
       console.log(`[${done + 1}/${total}] Summarizing ${group.projectName} (${group.date})...`);
     }, config.day_start_hour, config.summary_instructions, config.summary_provider);
@@ -171,9 +181,9 @@ switch (command) {
 
     const { resolveTemplate } = await import("./report-template");
     const { generateReport, exportMarkdown, buildPrompt, NoEntriesError } = await import("./reports");
-    const { providerModel, complete } = await import("./llm");
+    const { providerModel, complete, resolveProvider } = await import("./llm");
 
-    const provider = config.report_provider ?? config.summary_provider;
+    const provider = await resolveProvider(config.report_provider ?? config.summary_provider);
 
     try {
       const { weekRangeForLabel, lastCompletedWeek } = await import("./week");
