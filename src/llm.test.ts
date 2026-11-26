@@ -91,6 +91,55 @@ describe("complete (openai-compatible provider)", () => {
   });
 });
 
+describe("retry when the endpoint is busy", () => {
+  let server: ReturnType<typeof Bun.serve>;
+  let statuses: number[];
+  let hits: number;
+
+  beforeEach(() => {
+    hits = 0;
+    server = Bun.serve({
+      port: 0,
+      fetch() {
+        const status = statuses[Math.min(hits, statuses.length - 1)]!;
+        hits++;
+        if (status !== 200) return new Response("Model busy, retry later", { status });
+        return Response.json({ choices: [{ message: { content: "eventually" } }] });
+      },
+    });
+  });
+
+  afterEach(() => server.stop(true));
+
+  function provider(extra: Partial<Extract<SummaryProvider, { type: "openai" }>> = {}): SummaryProvider {
+    return {
+      type: "openai",
+      base_url: `http://localhost:${server.port}/v1`,
+      model: "busy-model",
+      retry_delay_ms: 1,
+      ...extra,
+    };
+  }
+
+  test("retries a 429 until the model answers", async () => {
+    statuses = [429, 503, 200];
+    expect(await complete("x", provider())).toBe("eventually");
+    expect(hits).toBe(3);
+  });
+
+  test("gives up after max_retries and reports the last status", async () => {
+    statuses = [429];
+    await expect(complete("x", provider({ max_retries: 2 }))).rejects.toThrow(/429/);
+    expect(hits).toBe(3);
+  });
+
+  test("does not retry an error that waiting cannot fix", async () => {
+    statuses = [400];
+    await expect(complete("x", provider())).rejects.toThrow(/400/);
+    expect(hits).toBe(1);
+  });
+});
+
 describe("providerModel", () => {
   test("names the configured openai model", () => {
     expect(

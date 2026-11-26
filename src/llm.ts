@@ -30,11 +30,24 @@ export type SummaryProvider =
       fallback?: SummaryProvider;
       /** How long to wait for the reachability probe. Defaults to 3000 ms. */
       probe_timeout_ms?: number;
+      /**
+       * How many times to retry a request the endpoint turned away as busy
+       * (HTTP 429, 502, 503, 504). Defaults to 4; 0 disables retrying.
+       */
+      max_retries?: number;
+      /** Wait before the first retry; each later wait is triple the last. Defaults to 2000 ms. */
+      retry_delay_ms?: number;
     };
 
 type OpenAIProvider = Extract<SummaryProvider, { type: "openai" }>;
 
 const DEFAULT_PROBE_TIMEOUT_MS = 3000;
+const DEFAULT_MAX_RETRIES = 4;
+const DEFAULT_RETRY_DELAY_MS = 2000;
+/** A hosted model that is momentarily overloaded answers with one of these. */
+const BUSY_STATUSES = new Set([429, 502, 503, 504]);
+/** Never sleep longer than this on a server's Retry-After. */
+const MAX_RETRY_WAIT_MS = 60_000;
 /** How long a reachability verdict is trusted before probing again. */
 const PROBE_TTL_MS = 60_000;
 
@@ -104,30 +117,42 @@ async function completeOpenAI(
     ...authHeaders(provider),
   };
 
+  const maxRetries = provider.max_retries ?? DEFAULT_MAX_RETRIES;
+  let delay = provider.retry_delay_ms ?? DEFAULT_RETRY_DELAY_MS;
   let res: Response;
-  try {
-    res = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        model: provider.model,
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: provider.max_tokens ?? DEFAULT_MAX_TOKENS,
-      }),
-    });
-  } catch (err) {
-    reachability.set(provider.base_url, { ok: false, at: Date.now() });
-    const detail = err instanceof Error ? err.message : String(err);
-    throw new ProviderUnreachableError(
-      `${provider.model} at ${provider.base_url} is unreachable: ${detail}`
-    );
-  }
+  for (let attempt = 0; ; attempt++) {
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          model: provider.model,
+          messages: [{ role: "user", content: prompt }],
+          max_tokens: provider.max_tokens ?? DEFAULT_MAX_TOKENS,
+        }),
+      });
+    } catch (err) {
+      reachability.set(provider.base_url, { ok: false, at: Date.now() });
+      const detail = err instanceof Error ? err.message : String(err);
+      throw new ProviderUnreachableError(
+        `${provider.model} at ${provider.base_url} is unreachable: ${detail}`
+      );
+    }
 
-  if (!res.ok) {
+    if (res.ok) break;
+
     const detail = await res.text().catch(() => "");
-    throw new Error(
-      `${provider.model} request failed: ${res.status} ${res.statusText} ${detail.slice(0, 200)}`
-    );
+    if (!BUSY_STATUSES.has(res.status) || attempt >= maxRetries) {
+      throw new Error(
+        `${provider.model} request failed: ${res.status} ${res.statusText} ${detail.slice(0, 200)}`
+      );
+    }
+
+    // The server's own Retry-After wins when it is longer than our backoff.
+    const retryAfter = Number(res.headers.get("retry-after")) * 1000;
+    const wait = Math.min(Math.max(delay, retryAfter || 0), MAX_RETRY_WAIT_MS);
+    await new Promise((resolve) => setTimeout(resolve, wait));
+    delay *= 3;
   }
 
   const data = (await res.json()) as {

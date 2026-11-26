@@ -223,7 +223,9 @@ refused, DNS failure, or no answer within `probe_timeout_ms` (default 3000):
 
 Only an unreachable endpoint triggers the fallback; one that answers with an
 HTTP error is reported as an error, so a bad key or model name is not silently
-papered over. Each journal entry and report records the model that actually
+papered over. A hosted model that answers "busy" (HTTP 429, 502, 503 or 504) is
+retried with a growing pause — four times by default, tunable per provider with
+`max_retries` and `retry_delay_ms`. Each journal entry and report records the model that actually
 wrote it. The fallback applies to summaries, session titles and weekly reports,
 from both the CLI and the web UI. Use whichever Qwen model ID DeepInfra
 currently lists.
