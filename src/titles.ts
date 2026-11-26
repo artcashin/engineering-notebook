@@ -82,7 +82,14 @@ export async function titleSession(
 }
 
 /** Backfill generated titles for sessions with no title (skips Desktop/user-titled ones). */
-export async function backfillTitles(db: Database, opts: { limit?: number; onProgress?: (done: number, total: number, title: string) => void } = {}): Promise<{ generated: number; skipped: number }> {
+export async function backfillTitles(
+  db: Database,
+  opts: {
+    limit?: number;
+    provider?: SummaryProvider;
+    onProgress?: (done: number, total: number, title: string) => void;
+  } = {}
+): Promise<{ generated: number; skipped: number; firstError?: string }> {
   const rows = db.query(
     `SELECT s.id FROM sessions s
      WHERE (s.title IS NULL OR s.title = '')
@@ -91,14 +98,17 @@ export async function backfillTitles(db: Database, opts: { limit?: number; onPro
      ORDER BY s.started_at DESC ${opts.limit ? "LIMIT " + Math.max(0, opts.limit | 0) : ""}`
   ).all() as { id: string }[];
   let generated = 0, skipped = 0;
+  let firstError: string | undefined;
   for (let i = 0; i < rows.length; i++) {
     try {
-      const t = await titleSession(db, rows[i]!.id);
+      const t = await titleSession(db, rows[i]!.id, opts.provider);
       if (t) { generated++; opts.onProgress?.(i + 1, rows.length, t); }
       else skipped++;
-    } catch {
+    } catch (err) {
       skipped++;
+      // Keep one cause so a wholly failed run (bad key, model gone) explains itself.
+      firstError ??= err instanceof Error ? err.message : String(err);
     }
   }
-  return { generated, skipped };
+  return { generated, skipped, firstError };
 }

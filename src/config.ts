@@ -41,6 +41,11 @@ export type Config = {
   report_template_cache?: string;
   /** Model for weekly reports. Falls back to summary_provider when unset. */
   report_provider?: SummaryProvider;
+  /**
+   * Model for session titles. Unset keeps the defaults: titles written while
+   * summarizing use summary_provider, and `title --generate` uses Claude Haiku.
+   */
+  title_provider?: SummaryProvider;
 };
 
 export function defaultConfig(): Config {

@@ -150,6 +150,7 @@ Config lives at `~/.config/engineering-notebook/config.json`:
 | `report_template_url`    | URL of the report prompt template (unset uses shipped default)                           | absent                                         |
 | `report_template_cache`  | Where the last successfully fetched template is cached                                   | absent                                         |
 | `report_provider`        | Model for weekly reports (falls back to summary_provider when unset)                    | absent                                         |
+| `title_provider`         | Model for session titles, both while summarizing and for `title --generate`              | absent                                         |
 
 ### OpenCode sessions
 

@@ -393,7 +393,8 @@ export async function summarizeGroup(
   group: SessionGroup,
   db: Database,
   summaryInstructions?: string,
-  provider?: SummaryProvider
+  provider?: SummaryProvider,
+  titleProvider?: SummaryProvider
 ): Promise<{ skipped: boolean; skipReason?: string }> {
   const prompt = buildSummaryPrompt(group, summaryInstructions);
 
@@ -410,7 +411,7 @@ export async function summarizeGroup(
     try {
       const row = db.query("SELECT title, COALESCE(is_subagent, 0) AS sub FROM sessions WHERE id = ?").get(sid) as
         | { title: string | null; sub: number } | null;
-      if (row && !row.title && !row.sub) await titleSession(db, sid, provider);
+      if (row && !row.title && !row.sub) await titleSession(db, sid, titleProvider ?? provider);
     } catch {
       // title generation is best-effort; never fail a summary over it
     }
@@ -427,7 +428,8 @@ export async function summarizeAll(
   onProgress?: (done: number, total: number, group: SessionGroup) => void,
   dayStartHour: number = 5,
   summaryInstructions?: string,
-  provider?: SummaryProvider
+  provider?: SummaryProvider,
+  titleProvider?: SummaryProvider
 ): Promise<{ summarized: number; skipped: number; skipReasons: string[]; errors: string[] }> {
   const groups = groupSessionsByDateAndProject(db, filterDate, filterProject, dayStartHour);
   let summarized = 0;
@@ -457,7 +459,7 @@ export async function summarizeAll(
   for (const group of groups) {
     try {
       onProgress?.(summarized + skipped, groups.length, group);
-      const result = await summarizeGroup(group, db, summaryInstructions, provider);
+      const result = await summarizeGroup(group, db, summaryInstructions, provider, titleProvider);
       if (result.skipped) {
         skipped++;
         if (result.skipReason) skipReasons.push(result.skipReason);

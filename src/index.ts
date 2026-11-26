@@ -111,7 +111,7 @@ switch (command) {
     console.log(`Summarizing with ${providerModel(serving)}...`);
     const result = await summarizeAll(db, filterDate, filterProject, (done, total, group) => {
       console.log(`[${done + 1}/${total}] Summarizing ${group.projectName} (${group.date})...`);
-    }, config.day_start_hour, config.summary_instructions, config.summary_provider);
+    }, config.day_start_hour, config.summary_instructions, config.summary_provider, config.title_provider);
 
     console.log(`Summarized: ${result.summarized}, Skipped: ${result.skipped}, Errors: ${result.errors.length}`);
     if (result.skipped > 0) {
@@ -159,12 +159,18 @@ switch (command) {
     if (generate) {
       const limitIdx = process.argv.indexOf("--limit");
       const limit = limitIdx !== -1 ? parseInt(process.argv[limitIdx + 1]!, 10) : undefined;
-      console.log("Generating titles for Claude Code sessions without one…");
-      const { generated, skipped } = await backfillTitles(db, {
+      const { providerModel, resolveProvider } = await import("./llm");
+      const titleProvider = await resolveProvider(config.title_provider);
+      console.log(
+        `Generating titles for sessions without one with ${providerModel(titleProvider ?? { type: "anthropic", model: "claude-haiku-4-5" })}…`
+      );
+      const { generated, skipped, firstError } = await backfillTitles(db, {
         limit,
+        provider: titleProvider,
         onProgress: (done, total, title) => console.log(`  [${done}/${total}] ${title}`),
       });
       console.log(`Generated ${generated}, skipped ${skipped}.`);
+      if (firstError) console.error(`  first error: ${firstError}`);
     } else {
       console.log("Pass --generate to also LLM-generate titles for the rest (or --limit N).");
     }
